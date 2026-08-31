@@ -15,6 +15,10 @@
 //	update.go       - app self-update check/download/apply
 //	rcloneupdate.go - rclone.exe install/update check/download/apply
 //	tray.go         - system tray icon + menu
+//	crashlog_windows.go / crashlog_other.go - redirect stderr to a file so
+//	                  an unrecovered panic's stack trace is actually
+//	                  captured, instead of vanishing (no console on a
+//	                  -H=windowsgui build)
 package main
 
 import (
@@ -38,6 +42,8 @@ const defaultWindowHeight = 520
 
 func main() {
 	appDir := mustAppDir()
+	redirectStderrToFile(filepath.Join(appDir, "RcloneManager.crash.log"))
+
 	log := engine.RotatingLog{Path: filepath.Join(appDir, "RcloneManager.log"), MaxLines: 1000}
 
 	if exe, err := os.Executable(); err == nil {
