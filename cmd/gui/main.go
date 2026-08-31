@@ -89,7 +89,7 @@ func main() {
 		rm.checkRcloneUpdate(false)
 	})
 
-	if rm.cfg.StartMinimized {
+	if rm.cfgSnapshot().StartMinimized {
 		fyneApp.Run()
 	} else {
 		win.Show()

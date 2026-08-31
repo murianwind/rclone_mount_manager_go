@@ -106,7 +106,7 @@ func (rm *rcloneManager) activeMountsSnapshot() []engine.Mount {
 	rm.activeMu.Unlock()
 
 	var active []engine.Mount
-	for _, m := range rm.cfg.Mounts {
+	for _, m := range rm.cfgSnapshot().Mounts {
 		if runningIDs[m.ID] {
 			active = append(active, m)
 		}
@@ -123,7 +123,7 @@ func (rm *rcloneManager) installOrUpdateRclone(version string, remountAfter []en
 	rm.logf("INFO", "[rclone] v%s 설치/업데이트 시작", version)
 
 	destDir := rm.appDir
-	if p := strings.TrimSpace(rm.cfg.RclonePath); p != "" {
+	if p := strings.TrimSpace(rm.cfgSnapshot().RclonePath); p != "" {
 		destDir = filepath.Dir(p)
 	}
 
@@ -170,7 +170,7 @@ func (rm *rcloneManager) installOrUpdateRclone(version string, remountAfter []en
 			rm.logf("INFO", "[rclone] v%s 설치 완료: %s", version, newPath)
 			fyne.Do(func() {
 				progress.Hide()
-				rm.cfg.RclonePath = newPath
+				rm.withCfg(func(cfg *engine.Config) { cfg.RclonePath = newPath })
 				rm.rcPathEntry.SetText(newPath)
 				rm.persist()
 				rm.refreshVersionLabel()

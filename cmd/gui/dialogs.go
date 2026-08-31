@@ -88,7 +88,7 @@ func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote s
 				AutoMount:  existing != nil && existing.AutoMount,
 			}
 
-			if msg := validateMount(m, rm.cfg.Mounts); msg != "" {
+			if msg := validateMount(m, rm.cfgSnapshot().Mounts); msg != "" {
 				dialog.ShowInformation("알림", msg, rm.win)
 				return
 			}
@@ -127,17 +127,15 @@ func mountIDFor(existing *engine.Mount) string {
 }
 
 func (rm *rcloneManager) saveMount(m engine.Mount) {
-	found := false
-	for i, existing := range rm.cfg.Mounts {
-		if existing.ID == m.ID {
-			rm.cfg.Mounts[i] = m
-			found = true
-			break
+	rm.withCfg(func(cfg *engine.Config) {
+		for i, existing := range cfg.Mounts {
+			if existing.ID == m.ID {
+				cfg.Mounts[i] = m
+				return
+			}
 		}
-	}
-	if !found {
-		rm.cfg.Mounts = append(rm.cfg.Mounts, m)
-	}
+		cfg.Mounts = append(cfg.Mounts, m)
+	})
 	rm.persist()
 }
 
@@ -148,13 +146,15 @@ func (rm *rcloneManager) confirmDelete(m engine.Mount) {
 				return
 			}
 			rm.unmount(m.ID)
-			kept := rm.cfg.Mounts[:0]
-			for _, existing := range rm.cfg.Mounts {
-				if existing.ID != m.ID {
-					kept = append(kept, existing)
+			rm.withCfg(func(cfg *engine.Config) {
+				kept := cfg.Mounts[:0]
+				for _, existing := range cfg.Mounts {
+					if existing.ID != m.ID {
+						kept = append(kept, existing)
+					}
 				}
-			}
-			rm.cfg.Mounts = kept
+				cfg.Mounts = kept
+			})
 			rm.persist()
 		}, rm.win)
 }
@@ -165,13 +165,15 @@ func (rm *rcloneManager) confirmDeleteRemote(r engine.Remote) {
 			if !ok {
 				return
 			}
-			kept := rm.cfg.Remotes[:0]
-			for _, existing := range rm.cfg.Remotes {
-				if existing.Name != r.Name {
-					kept = append(kept, existing)
+			rm.withCfg(func(cfg *engine.Config) {
+				kept := cfg.Remotes[:0]
+				for _, existing := range cfg.Remotes {
+					if existing.Name != r.Name {
+						kept = append(kept, existing)
+					}
 				}
-			}
-			rm.cfg.Remotes = kept
+				cfg.Remotes = kept
+			})
 			rm.persist()
 		}, rm.win)
 }

@@ -56,7 +56,7 @@ func (rm *rcloneManager) autoMountAll() {
 	if rm.isUpdatingRclone() {
 		return
 	}
-	for _, m := range rm.cfg.Mounts {
+	for _, m := range rm.cfgSnapshot().Mounts {
 		if m.AutoMount {
 			rm.mountWithOrigin(m, true)
 		}

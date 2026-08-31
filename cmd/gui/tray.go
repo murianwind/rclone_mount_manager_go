@@ -77,12 +77,13 @@ func (rm *rcloneManager) buildTrayMenu() *fyne.Menu {
 		fyne.NewMenuItemSeparator(),
 	}
 
-	if len(rm.cfg.Mounts) == 0 {
+	mounts := rm.cfgSnapshot().Mounts
+	if len(mounts) == 0 {
 		empty := fyne.NewMenuItem("(등록된 마운트 없음)", nil)
 		empty.Disabled = true
 		items = append(items, empty, fyne.NewMenuItemSeparator())
 	} else {
-		for _, m := range rm.cfg.Mounts {
+		for _, m := range mounts {
 			m := m // capture per-iteration copy for the closure below
 			display := trayDisplayLabel(m, rm.isRunning(m.ID))
 			items = append(items, fyne.NewMenuItem(display, func() {

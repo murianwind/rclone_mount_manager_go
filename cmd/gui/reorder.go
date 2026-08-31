@@ -80,17 +80,24 @@ func (rm *rcloneManager) moveSelected(
 	}
 	row := rows[rm.selectedRow]
 
-	switch row.kind {
-	case rowKindRemote:
-		idx := indexOfRemote(rm.cfg.Remotes, row.remote.Name)
-		if idx < 0 || !swapRemote(rm.cfg.Remotes, idx) {
-			return
+	moved := false
+	rm.withCfg(func(cfg *engine.Config) {
+		switch row.kind {
+		case rowKindRemote:
+			idx := indexOfRemote(cfg.Remotes, row.remote.Name)
+			if idx < 0 || !swapRemote(cfg.Remotes, idx) {
+				return
+			}
+		default:
+			idx := indexOfMount(cfg.Mounts, row.mount.ID)
+			if idx < 0 || !swapMount(cfg.Mounts, idx) {
+				return
+			}
 		}
-	default:
-		idx := indexOfMount(rm.cfg.Mounts, row.mount.ID)
-		if idx < 0 || !swapMount(rm.cfg.Mounts, idx) {
-			return
-		}
+		moved = true
+	})
+	if !moved {
+		return
 	}
 
 	rm.selectedRow += delta

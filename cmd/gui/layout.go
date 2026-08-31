@@ -83,24 +83,24 @@ func (rm *rcloneManager) buildHeaderRow() fyne.CanvasObject {
 
 func (rm *rcloneManager) buildRclonePathRow() fyne.CanvasObject {
 	rm.rcPathEntry = widget.NewEntry()
-	rm.rcPathEntry.SetText(rm.cfg.RclonePath)
+	rm.rcPathEntry.SetText(rm.cfgSnapshot().RclonePath)
 	rm.rcPathEntry.SetPlaceHolder("rclone.exe 경로")
 	rm.rcPathEntry.MultiLine = true
 	rm.rcPathEntry.Wrapping = fyne.TextWrapWord
 	rm.rcPathEntry.SetMinRowsVisible(1) // 평소엔 한 줄만큼만 차지, 긴 경로는 줄바꿈+스크롤로 처리
 
 	browseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
-		startDir := filepath.Dir(strings.TrimSpace(rm.cfg.RclonePath))
+		startDir := filepath.Dir(strings.TrimSpace(rm.cfgSnapshot().RclonePath))
 		rm.showFilePicker("rclone.exe 선택", startDir, func(path string) {
 			rm.rcPathEntry.SetText(path)
-			rm.cfg.RclonePath = path
+			rm.withCfg(func(cfg *engine.Config) { cfg.RclonePath = path })
 			rm.persist()
 			rm.refreshVersionLabel()
 		})
 	})
 
 	rm.rcPathEntry.OnSubmitted = func(s string) {
-		rm.cfg.RclonePath = strings.TrimSpace(s)
+		rm.withCfg(func(cfg *engine.Config) { cfg.RclonePath = strings.TrimSpace(s) })
 		rm.persist()
 		rm.refreshVersionLabel()
 	}
@@ -120,16 +120,16 @@ func (rm *rcloneManager) buildStartupOptionsRow() fyne.CanvasObject {
 	autoStart.SetChecked(engine.IsStartupEnabled())
 
 	autoMount := widget.NewCheck("시작 시 자동 마운트", func(checked bool) {
-		rm.cfg.AutoMount = checked
+		rm.withCfg(func(cfg *engine.Config) { cfg.AutoMount = checked })
 		rm.persist()
 	})
-	autoMount.SetChecked(rm.cfg.AutoMount)
+	autoMount.SetChecked(rm.cfgSnapshot().AutoMount)
 
 	startMinimized := widget.NewCheck("시작 시 트레이로 최소화", func(checked bool) {
-		rm.cfg.StartMinimized = checked
+		rm.withCfg(func(cfg *engine.Config) { cfg.StartMinimized = checked })
 		rm.persist()
 	})
-	startMinimized.SetChecked(rm.cfg.StartMinimized)
+	startMinimized.SetChecked(rm.cfgSnapshot().StartMinimized)
 
 	return container.NewHBox(autoStart, autoMount, startMinimized)
 }
@@ -137,7 +137,7 @@ func (rm *rcloneManager) buildStartupOptionsRow() fyne.CanvasObject {
 // rcloneExePath resolves the rclone.exe to use: the explicitly configured
 // path if it exists, else appDir/rclone.exe.
 func (rm *rcloneManager) rcloneExePath() (string, bool) {
-	p := strings.TrimSpace(rm.cfg.RclonePath)
+	p := strings.TrimSpace(rm.cfgSnapshot().RclonePath)
 	if p != "" {
 		if _, err := os.Stat(p); err == nil {
 			return p, true

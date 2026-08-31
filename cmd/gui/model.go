@@ -38,8 +38,23 @@ type rcloneManager struct {
 	appDir string
 	log    engine.RotatingLog
 	store  engine.Store
-	cfg    engine.Config
 	win    fyne.Window
+
+	// cfg holds mounts.json's contents. Guarded by cfgMu because it's read
+	// from goroutines that never go through fyne.Do: the network monitor
+	// (autoMountAll, every ~10s while connected) and the rclone-update
+	// check (activeMountsSnapshot) both read cfg.Mounts directly on their
+	// own goroutines, while UI actions (add/edit/delete/reorder a mount,
+	// import remotes, toggle a checkbox) mutate the same slices on the
+	// Fyne main thread. Without a lock, an add/delete racing a network
+	// poll is a real, ordinary Go data race (one goroutine ranging over a
+	// slice while another reassigns it).
+	//
+	// Use cfgSnapshot() for any read spanning more than a single field,
+	// and withCfg() for any mutation — both take the lock for exactly the
+	// duration of the copy/edit, never longer.
+	cfgMu sync.RWMutex
+	cfg   engine.Config
 
 	table         *widget.Table
 	rcPathEntry   *widget.Entry
@@ -74,6 +89,29 @@ type rcloneManager struct {
 
 func (rm *rcloneManager) isUpdatingRclone() bool { return rm.updatingRclone.Load() }
 
+// cfgSnapshot returns a copy of rm.cfg safe to read from any goroutine —
+// the Mounts/Remotes slices are cloned, not shared, so the caller can
+// range over the result without holding any lock and without racing a
+// concurrent mutation.
+func (rm *rcloneManager) cfgSnapshot() engine.Config {
+	rm.cfgMu.RLock()
+	defer rm.cfgMu.RUnlock()
+	cfg := rm.cfg
+	cfg.Mounts = append([]engine.Mount(nil), rm.cfg.Mounts...)
+	cfg.Remotes = append([]engine.Remote(nil), rm.cfg.Remotes...)
+	return cfg
+}
+
+// withCfg runs fn with exclusive access to rm.cfg for the duration of the
+// call — the only way any code should mutate rm.cfg. Keep fn to just the
+// mutation itself (no dialogs, no I/O) so the lock is never held longer
+// than necessary.
+func (rm *rcloneManager) withCfg(fn func(cfg *engine.Config)) {
+	rm.cfgMu.Lock()
+	defer rm.cfgMu.Unlock()
+	fn(&rm.cfg)
+}
+
 func newRcloneManager(appDir string, log engine.RotatingLog, win fyne.Window) *rcloneManager {
 	return &rcloneManager{
 		appDir:      appDir,
@@ -103,7 +141,7 @@ func (rm *rcloneManager) isRunning(mountID string) bool {
 // view that shows mount state (the table and the tray menu) — the single
 // place both need to stay in sync, so nothing calls store.Save directly.
 func (rm *rcloneManager) persist() {
-	if err := rm.store.Save(rm.cfg); err != nil {
+	if err := rm.store.Save(rm.cfgSnapshot()); err != nil {
 		rm.logf("ERROR", "[설정] mounts.json 저장 실패: %v", err)
 		rm.revealWindow()
 		dialog.ShowError(err, rm.win)
@@ -119,8 +157,10 @@ func (rm *rcloneManager) persist() {
 // intercepted to hide rather than close.
 func (rm *rcloneManager) saveWindowSize() {
 	size := rm.win.Canvas().Size()
-	rm.cfg.WindowWidth = size.Width
-	rm.cfg.WindowHeight = size.Height
+	rm.withCfg(func(cfg *engine.Config) {
+		cfg.WindowWidth = size.Width
+		cfg.WindowHeight = size.Height
+	})
 	rm.persist()
 }
 

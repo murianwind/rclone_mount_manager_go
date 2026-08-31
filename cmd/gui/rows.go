@@ -23,11 +23,12 @@ type tableRow struct {
 // rows는 원본 리모트 목록을 먼저, 마운트 목록을 그 뒤에 이어붙인
 // 전체 테이블 행을 만든다 — 기존 Python 버전의 트리 구성 순서와 동일하다.
 func (rm *rcloneManager) rows() []tableRow {
-	rows := make([]tableRow, 0, len(rm.cfg.Remotes)+len(rm.cfg.Mounts))
-	for _, r := range rm.cfg.Remotes {
+	cfg := rm.cfgSnapshot()
+	rows := make([]tableRow, 0, len(cfg.Remotes)+len(cfg.Mounts))
+	for _, r := range cfg.Remotes {
 		rows = append(rows, tableRow{kind: rowKindRemote, remote: r})
 	}
-	for _, m := range rm.cfg.Mounts {
+	for _, m := range cfg.Mounts {
 		rows = append(rows, tableRow{kind: rowKindMount, mount: m})
 	}
 	return rows

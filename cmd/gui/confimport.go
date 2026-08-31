@@ -34,8 +34,8 @@ func (rm *rcloneManager) showConfImportDialog() {
 // showRemoteSelectDialog는 파싱된 리모트 후보 목록을 체크박스로 보여주고,
 // 선택된 것만 cfg.Remotes에 (이미 있는 이름은 건너뛰고) 추가한다.
 func (rm *rcloneManager) showRemoteSelectDialog(candidates []engine.Remote) {
-	existing := make(map[string]bool, len(rm.cfg.Remotes))
-	for _, r := range rm.cfg.Remotes {
+	existing := make(map[string]bool)
+	for _, r := range rm.cfgSnapshot().Remotes {
 		existing[r.Name] = true
 	}
 
@@ -61,12 +61,14 @@ func (rm *rcloneManager) showRemoteSelectDialog(candidates []engine.Remote) {
 			return
 		}
 		added := 0
-		for i, r := range candidates {
-			if checks[i].Checked && !existing[r.Name] {
-				rm.cfg.Remotes = append(rm.cfg.Remotes, r)
-				added++
+		rm.withCfg(func(cfg *engine.Config) {
+			for i, r := range candidates {
+				if checks[i].Checked && !existing[r.Name] {
+					cfg.Remotes = append(cfg.Remotes, r)
+					added++
+				}
 			}
-		}
+		})
 		if added > 0 {
 			rm.persist()
 		}
