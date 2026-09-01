@@ -85,6 +85,17 @@ type rcloneManager struct {
 	// (read from the network-monitor goroutine, written from the update
 	// goroutine).
 	updatingRclone atomic.Bool
+
+	// staleMu guards staleRetries — how many times each mount ID has been
+	// automatically retried after a "mountpoint path already exists"
+	// failure (see isStaleMountpointError). This is what a fresh reboot
+	// can leave behind: WinFsp/Windows sometimes hasn't fully released a
+	// drive letter's previous mountpoint registration by the moment this
+	// app auto-mounts at startup, even though nothing is actually still
+	// using it. A short, capped retry clears up on its own; without it,
+	// the user saw a mount failure every time purely due to boot timing.
+	staleMu      sync.Mutex
+	staleRetries map[string]int
 }
 
 func (rm *rcloneManager) isUpdatingRclone() bool { return rm.updatingRclone.Load() }
@@ -114,12 +125,13 @@ func (rm *rcloneManager) withCfg(fn func(cfg *engine.Config)) {
 
 func newRcloneManager(appDir string, log engine.RotatingLog, win fyne.Window) *rcloneManager {
 	return &rcloneManager{
-		appDir:      appDir,
-		log:         log,
-		store:       engine.Store{Dir: appDir, Log: func(level, msg string) { _ = log.Write(level, msg) }},
-		win:         win,
-		active:      map[string]*runningMount{},
-		selectedRow: -1,
+		appDir:       appDir,
+		log:          log,
+		store:        engine.Store{Dir: appDir, Log: func(level, msg string) { _ = log.Write(level, msg) }},
+		win:          win,
+		active:       map[string]*runningMount{},
+		staleRetries: map[string]int{},
+		selectedRow:  -1,
 	}
 }
 

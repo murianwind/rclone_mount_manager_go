@@ -70,6 +70,7 @@ func (rm *rcloneManager) mountWithOrigin(m engine.Mount, auto bool) {
 	}
 
 	rm.logf("INFO", "[마운트] %s:%s → %s 시작 (pid %d)", m.Remote, m.RemotePath, m.Drive, cmd.Process.Pid)
+	rm.clearStaleMountRetries(m.ID)
 	fyne.Do(func() { rm.table.Refresh(); rm.refreshTrayMenu() })
 
 	go rm.waitForMountExit(m, cmd, done, &stderrBuf)
@@ -117,6 +118,17 @@ func (rm *rcloneManager) waitForMountExit(m engine.Mount, cmd *exec.Cmd, done ch
 	if report && autoTriggered && shouldSuppressAutoMountFailure(rm.getOfflineSince(), time.Now(), autoMountFailureGrace) {
 		rm.logf("INFO", "[마운트] %s:%s 자동 마운트 실패했지만 오프라인 유예 기간(%v) 이내라 알림 생략", m.Remote, m.RemotePath, autoMountFailureGrace)
 		report = false
+	}
+	if report && isStaleMountpointError(detail) {
+		used, allowed := rm.noteStaleMountRetry(m.ID)
+		if allowed {
+			rm.logf("WARN", "[마운트] %s:%s 마운트포인트가 아직 정리되지 않은 것으로 보임 — %v 후 재시도 (%d/%d)",
+				m.Remote, m.RemotePath, staleMountRetryDelay, used, maxStaleMountRetries)
+			report = false
+			go rm.retryStaleMount(m, autoTriggered)
+		} else {
+			rm.logf("ERROR", "[마운트] %s:%s 마운트포인트 정리 재시도 %d회 모두 실패", m.Remote, m.RemotePath, maxStaleMountRetries)
+		}
 	}
 
 	fyne.Do(func() {
