@@ -24,6 +24,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -42,7 +43,10 @@ const defaultWindowHeight = 520
 
 func main() {
 	appDir := mustAppDir()
-	redirectStderrToFile(filepath.Join(appDir, "RcloneManager.crash.log"))
+
+	crashLogPath := filepath.Join(appDir, "RcloneManager.crash.log")
+	archivedCrash, hadCrash := archivePreviousCrashLog(crashLogPath, time.Now())
+	redirectStderrToFile(crashLogPath)
 
 	log := engine.RotatingLog{Path: filepath.Join(appDir, "RcloneManager.log"), MaxLines: 1000}
 
@@ -58,6 +62,9 @@ func main() {
 
 	rm := newRcloneManager(appDir, log, win)
 	rm.logf("INFO", "[시작] RcloneManager v%s 시작됨", appVersion)
+	if hadCrash {
+		rm.logf("WARN", "[크래시] 이전 실행이 예기치 않게 종료된 기록이 있습니다 — %s 파일을 확인해 주세요", archivedCrash)
+	}
 
 	if fixed, err := engine.CheckAndFixStartup(); err != nil {
 		rm.logf("WARN", "[시작프로그램] 경로 재등록 확인 실패: %v", err)
