@@ -59,3 +59,50 @@ func TestMountFailureMessage(t *testing.T) {
 		}
 	})
 }
+
+func TestMountFromForm(t *testing.T) {
+	Scenario(t, "GIVEN 새 마운트를 추가하는 경우(existing이 nil) WHEN 조립 THEN AutoMount와 Schedules는 빈 상태로 시작한다", func(t *testing.T) {
+		m := mountFromForm(nil, "gds", "video", "E:", "", "off", "")
+		if m.AutoMount {
+			t.Errorf("새 마운트인데 AutoMount가 true로 나옴")
+		}
+		if len(m.Schedules) != 0 {
+			t.Errorf("새 마운트인데 Schedules가 비어있지 않음: %+v", m.Schedules)
+		}
+	})
+
+	// 회귀 테스트: 실제로 있었던 버그 — 일정이 있는 마운트를 편집(캐시 모드만
+	// 바꾸는 것도 포함)하면 Schedules가 조용히 사라졌었다.
+	Scenario(t, "GIVEN 기존 마운트에 일정이 등록돼 있음 WHEN 다른 필드만 바꿔서 편집 THEN 일정이 그대로 유지된다 (회귀 테스트)", func(t *testing.T) {
+		existing := &engine.Mount{
+			ID: "m1", Remote: "gds", RemotePath: "video", Drive: "E:",
+			AutoMount: false,
+			Schedules: []engine.Schedule{{StartHour: 9, StartMinute: 0, EndHour: 18, EndMinute: 0, Days: []int{1, 2, 3, 4, 5}}},
+		}
+
+		m := mountFromForm(existing, "gds", "video", "E:", "", "writes", "") // 캐시 모드만 바꿔서 저장
+
+		if len(m.Schedules) != 1 {
+			t.Fatalf("일정이 사라짐: %+v", m.Schedules)
+		}
+		if m.Schedules[0].StartHour != 9 {
+			t.Errorf("일정 내용이 바뀜: %+v", m.Schedules[0])
+		}
+	})
+
+	Scenario(t, "GIVEN 기존 마운트의 자동 마운트가 켜져 있음 WHEN 편집 THEN 자동 마운트 상태가 그대로 유지된다", func(t *testing.T) {
+		existing := &engine.Mount{ID: "m1", Remote: "gds", AutoMount: true}
+		m := mountFromForm(existing, "gds", "", "", "", "", "")
+		if !m.AutoMount {
+			t.Errorf("AutoMount가 유지돼야 하는데 false가 됨")
+		}
+	})
+
+	Scenario(t, "GIVEN 편집 중임 WHEN 조립 THEN ID는 기존 것을 그대로 쓴다 (경계 케이스)", func(t *testing.T) {
+		existing := &engine.Mount{ID: "keep-me", Remote: "gds"}
+		m := mountFromForm(existing, "gds2", "", "", "", "", "")
+		if m.ID != "keep-me" {
+			t.Errorf("ID가 바뀌면 안 되는데 %q", m.ID)
+		}
+	})
+}

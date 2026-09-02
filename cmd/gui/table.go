@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -28,12 +29,12 @@ const (
 // tableContentWidth is the sum of every column's fixed width — used
 // elsewhere to size the window sensibly, since Table itself doesn't
 // factor column widths into its own MinSize.
-const tableContentWidth = 80 + 46 + 70 + 230 + 70 + 190
+const tableContentWidth = 80 + 46 + 70 + 230 + 70 + 240
 
 // columnWidths holds each column's fixed pixel width, indexed by the col*
 // constants — shared by buildTable (SetColumnWidth) and buildTableHeader
 // (matching fixed-width labels), so the two never drift out of sync.
-var columnWidths = [colCount]float32{80, 46, 70, 230, 70, 190}
+var columnWidths = [colCount]float32{80, 46, 70, 230, 70, 240}
 
 // columnHeaderLabels are the column titles, indexed the same way.
 var columnHeaderLabels = [colCount]string{"구분", "자동", "드라이브", "리모트(서브경로)", "상태", ""}
@@ -125,10 +126,11 @@ func (rm *rcloneManager) updateRemoteRowCell(col int, cell *fyne.Container, r en
 	case colRemote:
 		rm.setCellText(cell, remoteDisplayText(r), selected)
 	case colActions:
-		importBtn, middleBtn, delBtn := rm.cellActionButtons(cell)
+		importBtn, blank1, blank2, delBtn := rm.cellActionButtons(cell)
 		importBtn.SetText("가져오기")
 		importBtn.OnTapped = func() { rm.showMountDialog(nil, r.Name) }
-		middleBtn.Hide() // 원본 행에는 편집 개념이 없어서 중간 슬롯을 안 씀
+		blank1.Hide() // 원본 행에는 편집 개념이 없어서 안 씀
+		blank2.Hide() // 원본 행에는 일정 개념이 없어서 안 씀
 		delBtn.SetText("삭제")
 		delBtn.OnTapped = func() { rm.confirmDeleteRemote(r) }
 	}
@@ -139,6 +141,11 @@ func (rm *rcloneManager) updateMountRowCell(col int, cell *fyne.Container, m eng
 	case colAuto:
 		check := rm.cellCheck(cell)
 		check.SetChecked(m.AutoMount)
+		if len(m.Schedules) > 0 {
+			check.Disable()
+		} else {
+			check.Enable()
+		}
 		check.OnChanged = func(checked bool) {
 			m.AutoMount = checked
 			rm.saveMount(m)
@@ -150,11 +157,14 @@ func (rm *rcloneManager) updateMountRowCell(col int, cell *fyne.Container, m eng
 	case colStatus:
 		rm.setCellText(cell, statusLabel(rm.isRunning(m.ID)), selected)
 	case colActions:
-		toggle, editBtn, delBtn := rm.cellActionButtons(cell)
+		toggle, editBtn, scheduleBtn, delBtn := rm.cellActionButtons(cell)
 		running := rm.isRunning(m.ID)
 		toggle.SetText(toggleLabel(running))
 		toggle.OnTapped = func() {
 			if running {
+				if len(m.Schedules) > 0 && engine.IsWithinSchedule(m.Schedules, time.Now()) {
+					rm.setScheduleSkip(m.ID, true)
+				}
 				rm.unmount(m.ID)
 			} else {
 				rm.mount(m)
@@ -163,6 +173,19 @@ func (rm *rcloneManager) updateMountRowCell(col int, cell *fyne.Container, m eng
 		editBtn.Show()
 		editBtn.SetText("편집")
 		editBtn.OnTapped = func() { rm.showMountDialog(&m, "") }
+
+		scheduleBtn.SetText("일정")
+		if m.AutoMount {
+			scheduleBtn.Hide() // "자동"이 켜져 있으면 일정은 의미가 없다 — 서로 배타적
+		} else {
+			scheduleBtn.Show()
+			if len(m.Schedules) > 0 {
+				scheduleBtn.Importance = widget.HighImportance // 일정이 등록돼 있음을 한눈에
+			}
+			scheduleBtn.Refresh()
+			scheduleBtn.OnTapped = func() { rm.showScheduleDialog(m) }
+		}
+
 		delBtn.SetText("삭제")
 		delBtn.OnTapped = func() { rm.confirmDelete(m) }
 	}
@@ -202,20 +225,25 @@ func (rm *rcloneManager) setCellText(cell *fyne.Container, text string, bold boo
 	}
 }
 
-// cellActionButtons returns a 3-button slot shared by both row kinds:
-// mount rows use all three (토글/편집/삭제); remote rows only use the
-// first and third (가져오기/삭제) — the middle one is left blank rather
+// cellActionButtons returns a 4-button slot shared by both row kinds:
+// mount rows use all four (토글/편집/일정/삭제); remote rows only use the
+// first and last (가져오기/삭제) — the middle two are left blank rather
 // than removed, so the recycled widget shape stays consistent.
-func (rm *rcloneManager) cellActionButtons(cell *fyne.Container) (first, middle, last *widget.Button) {
+func (rm *rcloneManager) cellActionButtons(cell *fyne.Container) (first, second, third, last *widget.Button) {
 	if len(cell.Objects) == 1 {
-		if row, ok := cell.Objects[0].(*fyne.Container); ok && len(row.Objects) == 3 {
+		if row, ok := cell.Objects[0].(*fyne.Container); ok && len(row.Objects) == 4 {
 			if firstWrap, ok := row.Objects[0].(*fyne.Container); ok && len(firstWrap.Objects) == 1 {
 				if f, ok := firstWrap.Objects[0].(*widget.Button); ok {
-					if m, ok := row.Objects[1].(*widget.Button); ok {
-						if l, ok := row.Objects[2].(*widget.Button); ok {
-							m.SetText("")
-							m.OnTapped = nil
-							return f, m, l
+					if s, ok := row.Objects[1].(*widget.Button); ok {
+						if t, ok := row.Objects[2].(*widget.Button); ok {
+							if l, ok := row.Objects[3].(*widget.Button); ok {
+								s.SetText("")
+								s.OnTapped = nil
+								t.SetText("")
+								t.OnTapped = nil
+								t.Importance = widget.MediumImportance
+								return f, s, t, l
+							}
 						}
 					}
 				}
@@ -223,14 +251,15 @@ func (rm *rcloneManager) cellActionButtons(cell *fyne.Container) (first, middle,
 		}
 	}
 	first = widget.NewButton("", nil)
-	middle = widget.NewButton("", nil)
+	second = widget.NewButton("", nil)
+	third = widget.NewButton("", nil)
 	last = widget.NewButton("", nil)
 	// 버튼 라벨 길이가 바뀌어도(마운트/해제/가져오기 등) 폭이 흔들리지
 	// 않도록 첫 번째 버튼만 고정 폭으로 감싼다 — 뒤따르는 버튼들의
 	// 위치가 흔들리는 걸 막기 위함.
 	firstFixed := container.New(layout.NewGridWrapLayout(fyne.NewSize(64, 34)), first)
-	cell.Objects = []fyne.CanvasObject{container.NewHBox(firstFixed, middle, last)}
-	return first, middle, last
+	cell.Objects = []fyne.CanvasObject{container.NewHBox(firstFixed, second, third, last)}
+	return first, second, third, last
 }
 
 // displayDrive is the pure formatting rule shared by the table's 드라이브

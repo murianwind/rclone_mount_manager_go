@@ -96,6 +96,10 @@ type rcloneManager struct {
 	// the user saw a mount failure every time purely due to boot timing.
 	staleMu      sync.Mutex
 	staleRetries map[string]int
+
+	// scheduleSkipMu guards scheduleSkip — see schedule.go.
+	scheduleSkipMu sync.Mutex
+	scheduleSkip   map[string]bool
 }
 
 func (rm *rcloneManager) isUpdatingRclone() bool { return rm.updatingRclone.Load() }
@@ -131,6 +135,7 @@ func newRcloneManager(appDir string, log engine.RotatingLog, win fyne.Window) *r
 		win:          win,
 		active:       map[string]*runningMount{},
 		staleRetries: map[string]int{},
+		scheduleSkip: map[string]bool{},
 		selectedRow:  -1,
 	}
 }

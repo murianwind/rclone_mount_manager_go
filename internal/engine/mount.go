@@ -9,14 +9,15 @@ import (
 
 // Mount mirrors the fields of a single mount entry in mounts.json.
 type Mount struct {
-	ID         string `json:"id"`
-	Remote     string `json:"remote"`
-	RemotePath string `json:"remote_path"`
-	Drive      string `json:"drive"`
-	CacheDir   string `json:"cache_dir"`
-	CacheMode  string `json:"cache_mode"`
-	ExtraFlags string `json:"extra_flags"`
-	AutoMount  bool   `json:"auto_mount"`
+	ID         string     `json:"id"`
+	Remote     string     `json:"remote"`
+	RemotePath string     `json:"remote_path"`
+	Drive      string     `json:"drive"`
+	CacheDir   string     `json:"cache_dir"`
+	CacheMode  string     `json:"cache_mode"`
+	ExtraFlags string     `json:"extra_flags"`
+	AutoMount  bool       `json:"auto_mount"`
+	Schedules  []Schedule `json:"schedules,omitempty"`
 }
 
 // NewMountID generates a new random v4-UUID-shaped identifier for a mount

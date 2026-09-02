@@ -77,16 +77,9 @@ func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote s
 				return
 			}
 
-			m := engine.Mount{
-				ID:         mountIDFor(existing),
-				Remote:     strings.TrimSpace(remoteEntry.Text),
-				RemotePath: strings.TrimSpace(pathEntry.Text),
-				Drive:      strings.TrimSpace(driveEntry.Text),
-				CacheDir:   strings.TrimSpace(cacheDirEntry.Text),
-				CacheMode:  cacheModeSelect.Selected,
-				ExtraFlags: engine.NormalizeFlags(extraFlagsEntry.Text),
-				AutoMount:  existing != nil && existing.AutoMount,
-			}
+			m := mountFromForm(existing,
+				remoteEntry.Text, pathEntry.Text, driveEntry.Text,
+				cacheDirEntry.Text, cacheModeSelect.Selected, extraFlagsEntry.Text)
 
 			if msg := validateMount(m, rm.cfgSnapshot().Mounts); msg != "" {
 				dialog.ShowInformation("알림", msg, rm.win)
@@ -124,6 +117,33 @@ func mountIDFor(existing *engine.Mount) string {
 		return existing.ID
 	}
 	return engine.NewMountID()
+}
+
+// mountFromForm builds a Mount from the dialog's plain-text form fields,
+// carrying forward whatever existing has that the form doesn't itself
+// expose — AutoMount (toggled from the table, not this dialog) and
+// Schedules (edited from its own separate 일정 dialog). existing is nil
+// when adding a brand-new mount, in which case both simply start empty.
+//
+// Pulled out as its own function specifically because it's easy to add a
+// new such field later and forget to carry it forward here too — this
+// happened for real with Schedules once already, silently wiping any
+// configured schedule the moment the mount was edited for anything else.
+func mountFromForm(existing *engine.Mount, remote, path, drive, cacheDir, cacheMode, extraFlags string) engine.Mount {
+	m := engine.Mount{
+		ID:         mountIDFor(existing),
+		Remote:     strings.TrimSpace(remote),
+		RemotePath: strings.TrimSpace(path),
+		Drive:      strings.TrimSpace(drive),
+		CacheDir:   strings.TrimSpace(cacheDir),
+		CacheMode:  cacheMode,
+		ExtraFlags: engine.NormalizeFlags(extraFlags),
+	}
+	if existing != nil {
+		m.AutoMount = existing.AutoMount
+		m.Schedules = existing.Schedules
+	}
+	return m
 }
 
 func (rm *rcloneManager) saveMount(m engine.Mount) {
