@@ -44,6 +44,7 @@ func TestFetchLatestRelease(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{
 				"tag_name": "v2.1.0",
+				"body": "- 뭔가 고쳤습니다\n- 뭔가 더 고쳤습니다",
 				"assets": [
 					{"name": "RcloneManager.zip", "browser_download_url": "https://example.com/RcloneManager.zip"}
 				]
@@ -57,6 +58,9 @@ func TestFetchLatestRelease(t *testing.T) {
 		}
 		if rel.Version != "2.1.0" {
 			t.Errorf("Version = %q, want %q", rel.Version, "2.1.0")
+		}
+		if rel.Body == "" {
+			t.Errorf("release body should have been parsed but is empty")
 		}
 		if len(rel.Assets) != 1 || rel.Assets[0].Name != "RcloneManager.zip" {
 			t.Fatalf("unexpected assets: %+v", rel.Assets)

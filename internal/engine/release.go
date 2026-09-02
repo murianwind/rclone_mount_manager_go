@@ -69,11 +69,13 @@ type ReleaseAsset struct {
 // check for and download an app update: the version, and its assets.
 type Release struct {
 	Version string
+	Body    string
 	Assets  []ReleaseAsset
 }
 
 type githubReleaseFull struct {
 	TagName string `json:"tag_name"`
+	Body    string `json:"body"`
 	Assets  []struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
@@ -108,7 +110,7 @@ func FetchLatestRelease(client *http.Client, apiURL string) (Release, error) {
 		return Release{}, err
 	}
 
-	rel := Release{Version: strings.TrimPrefix(full.TagName, "v")}
+	rel := Release{Version: strings.TrimPrefix(full.TagName, "v"), Body: full.Body}
 	for _, a := range full.Assets {
 		rel.Assets = append(rel.Assets, ReleaseAsset{Name: a.Name, DownloadURL: a.BrowserDownloadURL})
 	}
