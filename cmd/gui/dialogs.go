@@ -22,7 +22,7 @@ func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote s
 	pathEntry := widget.NewEntry()
 	wrapEntry(pathEntry) // 서브 디렉토리 경로는 길어질 수 있음
 	driveEntry := widget.NewEntry()
-	driveEntry.SetPlaceHolder("예: Z: 또는 D:\\연결폴더 (비우면 자동)")
+	driveEntry.SetPlaceHolder("드라이브 Z:(비우면 자동) 또는 폴더 D:\\연결폴더")
 	cacheDirEntry := widget.NewEntry()
 	wrapEntry(cacheDirEntry) // 캐시 디렉토리 경로도 길어질 수 있음
 	cacheBrowseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -63,7 +63,7 @@ func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote s
 			widget.NewFormItem("리모트 이름", remoteEntry),
 			widget.NewFormItem("서브 디렉토리", pathEntry),
 			widget.NewFormItem("", testBtn),
-			widget.NewFormItem("드라이브 문자/폴더", driveEntry),
+			widget.NewFormItem("마운트 위치", driveEntry),
 			widget.NewFormItem("캐시 디렉토리", container.NewBorder(nil, nil, nil, cacheBrowseBtn, cacheDirEntry)),
 			widget.NewFormItem("캐시 모드", cacheModeSelect),
 			widget.NewFormItem("추가 플래그", extraFlagsEntry),
