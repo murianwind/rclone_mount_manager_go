@@ -15,14 +15,14 @@ import (
 
 // showMountDialog opens the add/edit form. existing == nil means "add a
 // new mount"; prefillRemote pre-fills the remote-name field for that case
-// (used by the "가져오기" action on a raw remote row) and is ignored when
+// (used by the "마운트" action on a raw remote row) and is ignored when
 // existing != nil.
 func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote string) {
 	remoteEntry := widget.NewEntry()
 	pathEntry := widget.NewEntry()
 	wrapEntry(pathEntry) // 서브 디렉토리 경로는 길어질 수 있음
 	driveEntry := widget.NewEntry()
-	driveEntry.SetPlaceHolder("드라이브 Z:(비우면 자동) 또는 폴더 D:\\연결폴더")
+	driveEntry.SetPlaceHolder("드라이브 문자(비우면 자동) 또는 폴더")
 	cacheDirEntry := widget.NewEntry()
 	wrapEntry(cacheDirEntry) // 캐시 디렉토리 경로도 길어질 수 있음
 	cacheBrowseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -82,6 +82,10 @@ func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote s
 				cacheDirEntry.Text, cacheModeSelect.Selected, extraFlagsEntry.Text)
 
 			if msg := validateMount(m, rm.cfgSnapshot().Mounts); msg != "" {
+				dialog.ShowInformation("알림", msg, rm.win)
+				return
+			}
+			if msg := validateMountLocation(m.Drive); msg != "" {
 				dialog.ShowInformation("알림", msg, rm.win)
 				return
 			}

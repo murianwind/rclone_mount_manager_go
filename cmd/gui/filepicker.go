@@ -32,12 +32,19 @@ func (rm *rcloneManager) showFilePicker(title, startDir string, onSelected func(
 	pathLabel := widget.NewLabel(currentDir)
 	pathLabel.Wrapping = fyne.TextWrapBreak
 
+	driveSelect := widget.NewSelect(availableDrives(), nil)
+	driveSelect.PlaceHolder = "드라이브"
+
 	refresh := func() {
 		entries = listDir(currentDir)
 		selected = ""
 		pathLabel.SetText(currentDir)
 		list.UnselectAll()
 		list.Refresh()
+	}
+	driveSelect.OnChanged = func(d string) {
+		currentDir = d
+		refresh()
 	}
 
 	list = widget.NewList(
@@ -68,7 +75,8 @@ func (rm *rcloneManager) showFilePicker(title, startDir string, onSelected func(
 
 	scroll := container.NewVScroll(list)
 	scroll.SetMinSize(fyne.NewSize(480, 320))
-	content := container.NewBorder(pathLabel, nil, nil, nil, scroll)
+	header := container.NewBorder(nil, nil, driveSelect, nil, pathLabel)
+	content := container.NewBorder(header, nil, nil, nil, scroll)
 
 	dialog.ShowCustomConfirm(title, "선택", "취소", content, func(ok bool) {
 		if ok && selected != "" {
@@ -95,11 +103,18 @@ func (rm *rcloneManager) showDirPicker(title, startDir string, onSelected func(p
 	pathLabel := widget.NewLabel(currentDir)
 	pathLabel.Wrapping = fyne.TextWrapBreak
 
+	driveSelect := widget.NewSelect(availableDrives(), nil)
+	driveSelect.PlaceHolder = "드라이브"
+
 	refresh := func() {
 		entries = dirsOnly(listDir(currentDir))
 		pathLabel.SetText(currentDir)
 		list.UnselectAll()
 		list.Refresh()
+	}
+	driveSelect.OnChanged = func(d string) {
+		currentDir = d
+		refresh()
 	}
 
 	list = widget.NewList(
@@ -123,7 +138,8 @@ func (rm *rcloneManager) showDirPicker(title, startDir string, onSelected func(p
 
 	scroll := container.NewVScroll(list)
 	scroll.SetMinSize(fyne.NewSize(480, 320))
-	content := container.NewBorder(pathLabel, nil, nil, nil, scroll)
+	header := container.NewBorder(nil, nil, driveSelect, nil, pathLabel)
+	content := container.NewBorder(header, nil, nil, nil, scroll)
 
 	dialog.ShowCustomConfirm(title, "이 폴더 선택", "취소", content, func(ok bool) {
 		if ok {

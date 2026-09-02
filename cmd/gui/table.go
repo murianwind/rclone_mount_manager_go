@@ -127,7 +127,7 @@ func (rm *rcloneManager) updateRemoteRowCell(col int, cell *fyne.Container, r en
 		rm.setCellText(cell, remoteDisplayText(r), selected)
 	case colActions:
 		importBtn, blank1, blank2, delBtn := rm.cellActionButtons(cell)
-		importBtn.SetText("가져오기")
+		importBtn.SetText("마운트")
 		importBtn.OnTapped = func() { rm.showMountDialog(nil, r.Name) }
 		blank1.Hide() // 원본 행에는 편집 개념이 없어서 안 씀
 		blank2.Hide() // 원본 행에는 일정 개념이 없어서 안 씀
@@ -227,7 +227,7 @@ func (rm *rcloneManager) setCellText(cell *fyne.Container, text string, bold boo
 
 // cellActionButtons returns a 4-button slot shared by both row kinds:
 // mount rows use all four (토글/편집/일정/삭제); remote rows only use the
-// first and last (가져오기/삭제) — the middle two are left blank rather
+// first and last (마운트/삭제) — the middle two are left blank rather
 // than removed, so the recycled widget shape stays consistent.
 func (rm *rcloneManager) cellActionButtons(cell *fyne.Container) (first, second, third, last *widget.Button) {
 	if len(cell.Objects) == 1 {
@@ -254,7 +254,7 @@ func (rm *rcloneManager) cellActionButtons(cell *fyne.Container) (first, second,
 	second = widget.NewButton("", nil)
 	third = widget.NewButton("", nil)
 	last = widget.NewButton("", nil)
-	// 버튼 라벨 길이가 바뀌어도(마운트/해제/가져오기 등) 폭이 흔들리지
+	// 버튼 라벨 길이가 바뀌어도(마운트/해제 등) 폭이 흔들리지
 	// 않도록 첫 번째 버튼만 고정 폭으로 감싼다 — 뒤따르는 버튼들의
 	// 위치가 흔들리는 걸 막기 위함.
 	firstFixed := container.New(layout.NewGridWrapLayout(fyne.NewSize(64, 34)), first)

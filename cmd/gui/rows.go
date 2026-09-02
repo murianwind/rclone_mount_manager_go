@@ -4,7 +4,7 @@ import "github.com/Murianwind/rclone-manager-go/internal/engine"
 
 // rowKind은 테이블의 한 행이 "원본 리모트"인지 "마운트 설정"인지 구분한다.
 // 원본 행은 마운트로 아직 등록 안 된 rclone.conf의 리모트를 보여주고,
-// "가져오기" 버튼으로 마운트 추가 다이얼로그에 그대로 넘길 수 있다.
+// "마운트" 버튼으로 마운트 추가 다이얼로그에 그대로 넘길 수 있다.
 type rowKind int
 
 const (
