@@ -57,44 +57,50 @@ func (rm *rcloneManager) showMountDialog(existing *engine.Mount, prefillRemote s
 		rm.testMountConnection(strings.TrimSpace(remoteEntry.Text), strings.TrimSpace(pathEntry.Text))
 	})
 
-	form := dialog.NewForm(
-		mountDialogTitle(existing != nil), "저장", "취소",
-		[]*widget.FormItem{
-			widget.NewFormItem("리모트 이름", remoteEntry),
-			widget.NewFormItem("서브 디렉토리", pathEntry),
-			widget.NewFormItem("", testBtn),
-			widget.NewFormItem("마운트 위치", driveEntry),
-			widget.NewFormItem("캐시 디렉토리", container.NewBorder(nil, nil, nil, cacheBrowseBtn, cacheDirEntry)),
-			widget.NewFormItem("캐시 모드", cacheModeSelect),
-			widget.NewFormItem("추가 플래그", extraFlagsEntry),
-		},
-		func(ok bool) {
-			if !ok {
-				return
-			}
-			if strings.TrimSpace(remoteEntry.Text) == "" {
-				dialog.ShowInformation("알림", "리모트 이름을 입력해 주세요.", rm.win)
-				return
-			}
+	form := widget.NewForm(
+		widget.NewFormItem("리모트 이름", remoteEntry),
+		widget.NewFormItem("서브 디렉토리", pathEntry),
+		widget.NewFormItem("", testBtn),
+		widget.NewFormItem("마운트 위치", driveEntry),
+		widget.NewFormItem("캐시 디렉토리", container.NewBorder(nil, nil, nil, cacheBrowseBtn, cacheDirEntry)),
+		widget.NewFormItem("캐시 모드", cacheModeSelect),
+		widget.NewFormItem("추가 플래그", extraFlagsEntry),
+	) // OnSubmit/OnCancel을 안 설정해서 Form 자체는 버튼 없이 입력 행만 그린다 —
+	// 저장/취소는 아래 우리가 만든 버튼이 전담하고, 그래야 검증에 실패했을 때
+	// 다이얼로그를 안 닫고 그대로 열어둘 수 있다.
 
-			m := mountFromForm(existing,
-				remoteEntry.Text, pathEntry.Text, driveEntry.Text,
-				cacheDirEntry.Text, cacheModeSelect.Selected, extraFlagsEntry.Text)
+	scroll := container.NewVScroll(form)
+	scroll.SetMinSize(fyne.NewSize(420, 380))
 
-			if msg := validateMount(m, rm.cfgSnapshot().Mounts); msg != "" {
-				dialog.ShowInformation("알림", msg, rm.win)
-				return
-			}
-			if msg := validateMountLocation(m.Drive); msg != "" {
-				dialog.ShowInformation("알림", msg, rm.win)
-				return
-			}
-			rm.saveMount(m)
-		},
-		rm.win,
-	)
-	form.Resize(fyne.NewSize(440, 460))
-	form.Show()
+	var d dialog.Dialog
+	saveBtn := widget.NewButton("저장", func() {
+		if strings.TrimSpace(remoteEntry.Text) == "" {
+			dialog.ShowInformation("알림", "리모트 이름을 입력해 주세요.", rm.win)
+			return
+		}
+
+		m := mountFromForm(existing,
+			remoteEntry.Text, pathEntry.Text, driveEntry.Text,
+			cacheDirEntry.Text, cacheModeSelect.Selected, extraFlagsEntry.Text)
+
+		if msg := validateMount(m, rm.cfgSnapshot().Mounts); msg != "" {
+			dialog.ShowInformation("알림", msg, rm.win)
+			return
+		}
+		if msg := validateMountLocation(m.Drive); msg != "" {
+			dialog.ShowInformation("알림", msg, rm.win)
+			return
+		}
+		rm.saveMount(m)
+		d.Hide()
+	})
+	saveBtn.Importance = widget.HighImportance
+	cancelBtn := widget.NewButton("취소", func() { d.Hide() })
+
+	content := container.NewBorder(nil, container.NewHBox(cancelBtn, saveBtn), nil, nil, scroll)
+	d = dialog.NewCustomWithoutButtons(mountDialogTitle(existing != nil), content, rm.win)
+	d.Resize(fyne.NewSize(460, 500))
+	d.Show()
 }
 
 // wrapEntry turns a single-line Entry into one that word-wraps and scrolls
