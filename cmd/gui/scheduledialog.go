@@ -87,21 +87,16 @@ func (rm *rcloneManager) showScheduleDialog(m engine.Mount) {
 		dayRow.Add(allBtn)
 		refreshDayStyles()
 
-		hourOptions := make([]string, 24)
-		for h := 0; h < 24; h++ {
-			hourOptions[h] = fmt.Sprintf("%02d", h)
-		}
-
-		startHour := widget.NewSelect(hourOptions, nil)
-		startHour.SetSelected(fmt.Sprintf("%02d", schedules[idx].StartHour))
+		startHour := widget.NewEntry()
+		startHour.SetText(fmt.Sprintf("%02d", schedules[idx].StartHour))
 		startHour.OnChanged = func(v string) { schedules[idx].StartHour, _ = strconv.Atoi(v) }
 
 		startMinute := widget.NewEntry()
 		startMinute.SetText(fmt.Sprintf("%02d", schedules[idx].StartMinute))
 		startMinute.OnChanged = func(v string) { schedules[idx].StartMinute, _ = strconv.Atoi(v) }
 
-		endHour := widget.NewSelect(hourOptions, nil)
-		endHour.SetSelected(fmt.Sprintf("%02d", schedules[idx].EndHour))
+		endHour := widget.NewEntry()
+		endHour.SetText(fmt.Sprintf("%02d", schedules[idx].EndHour))
 		endHour.OnChanged = func(v string) { schedules[idx].EndHour, _ = strconv.Atoi(v) }
 
 		endMinute := widget.NewEntry()
@@ -137,13 +132,16 @@ func (rm *rcloneManager) showScheduleDialog(m engine.Mount) {
 		refreshRows()
 	}
 
-	addEntryBtn := widget.NewButton("+ 항목 추가", func() {
+	addEntryBtn := widget.NewButton("+ 일정 추가", func() {
 		addRow(defaultNewSchedule())
 	})
 
+	hint := widget.NewLabel("시·분은 24시간제 숫자로 입력해 주세요 (예: 오후 6시는 18로)")
+	hint.TextStyle = fyne.TextStyle{Italic: true}
+
 	scroll := container.NewVScroll(rowsBox)
 	scroll.SetMinSize(fyne.NewSize(480, 260))
-	content := container.NewBorder(nil, addEntryBtn, nil, nil, scroll)
+	content := container.NewBorder(hint, addEntryBtn, nil, nil, scroll)
 
 	var d dialog.Dialog
 	saveBtn := widget.NewButton("저장", func() {
