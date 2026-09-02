@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"os"
 
 	"github.com/Murianwind/rclone-manager-go/internal/engine"
 )
@@ -55,17 +57,53 @@ func (rm *rcloneManager) checkForUpdate(manual bool) {
 			rm.revealWindow()
 			rm.appUpdateAvailable = true
 			rm.updateTrayTooltip()
-			dialog.ShowConfirm("업데이트 가능",
-				fmt.Sprintf("새 버전 v%s가 있습니다. 지금 업데이트할까요?\n(적용 후 앱이 자동으로 재시작됩니다)", rel.Version),
-				func(ok bool) {
-					if ok {
-						rm.performUpdate(assetURL)
-					} else {
-						rm.logf("INFO", "[업데이트] 사용자가 업데이트를 취소함")
-					}
-				}, rm.win)
+			rm.showUpdateConfirmDialog(rel.Version, rel.Body, func() {
+				rm.performUpdate(assetURL)
+			})
 		})
 	}()
+}
+
+// showUpdateConfirmDialog shows the release notes in a scrollable area
+// (dialog.ShowConfirm's plain message can't scroll, so a long release
+// body would either overflow the screen or have to be truncated — this
+// lets it be read in full instead).
+func (rm *rcloneManager) showUpdateConfirmDialog(version, body string, onConfirm func()) {
+	label := widget.NewLabel(formatUpdateConfirmMessage(version, body))
+	label.Wrapping = fyne.TextWrapWord
+	scroll := container.NewVScroll(label)
+	scroll.SetMinSize(fyne.NewSize(420, 300))
+
+	var d dialog.Dialog
+	yesBtn := widget.NewButton("업데이트", func() {
+		d.Hide()
+		onConfirm()
+	})
+	yesBtn.Importance = widget.HighImportance
+	noBtn := widget.NewButton("취소", func() {
+		d.Hide()
+		rm.logf("INFO", "[업데이트] 사용자가 업데이트를 취소함")
+	})
+
+	content := container.NewBorder(nil, container.NewHBox(noBtn, yesBtn), nil, nil, scroll)
+	d = dialog.NewCustomWithoutButtons("업데이트 가능", content, rm.win)
+	d.Resize(fyne.NewSize(460, 380))
+	d.Show()
+}
+
+// formatUpdateConfirmMessage builds the update-confirm dialog's message,
+// including the release's own notes when there are any — shown in full,
+// since the dialog itself scrolls. Pulled out as a pure function for
+// testing — see update_test.go.
+func formatUpdateConfirmMessage(version, body string) string {
+	msg := fmt.Sprintf("새 버전 v%s가 있습니다.", version)
+
+	body = strings.TrimSpace(body)
+	if body != "" {
+		msg += "\n\n" + body
+	}
+
+	return msg + "\n\n지금 업데이트할까요? (적용 후 앱이 자동으로 재시작됩니다)"
 }
 
 // findAsset returns the download URL of the release asset named name, or
