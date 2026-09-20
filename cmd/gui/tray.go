@@ -28,6 +28,7 @@ func (rm *rcloneManager) setupTray(fyneApp fyne.App) {
 	// tooltip permanently blank. Set it directly via the underlying
 	// systray package, which Fyne already depends on.
 	rm.updateTrayTooltip()
+	rm.trayReady = true
 }
 
 // updateTrayTooltip refreshes the tray icon's hover text to reflect a
@@ -123,6 +124,9 @@ func (rm *rcloneManager) notify(message string) {
 // state on its own (mirrors the Python version's `_tray.menu = ...;
 // update_menu()` after every _refresh_list()).
 func (rm *rcloneManager) refreshTrayMenu() {
+	if !rm.trayReady {
+		return
+	}
 	desk, ok := fyne.CurrentApp().(desktop.App)
 	if !ok {
 		return

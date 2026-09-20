@@ -80,6 +80,15 @@ type rcloneManager struct {
 	appUpdateAvailable    bool
 	rcloneUpdateAvailable bool
 
+	// trayReady is set once setupTray has actually run. setupTray is
+	// deferred to the app's "started" lifecycle hook (see main.go), but
+	// autoMountAll's background goroutine can succeed and call
+	// refreshTrayMenu before that hook has fired — refreshTrayMenu checks
+	// this and skips itself in that case, since there's nothing yet for
+	// SetSystemTrayMenu to attach to, and setupTray will build the menu
+	// with current data anyway once it does run.
+	trayReady bool
+
 	// updatingRclone is set for the duration of installOrUpdateRclone —
 	// see autoMountAll's doc comment for why this needs to be atomic
 	// (read from the network-monitor goroutine, written from the update

@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	fynetest "fyne.io/fyne/v2/test"
 	"github.com/Murianwind/rclone-manager-go/internal/engine"
 )
 
@@ -77,5 +78,22 @@ func TestTrayTooltipText(t *testing.T) {
 		if got != "RcloneManager — 앱/rclone 업데이트 있음" {
 			t.Errorf("got %q", got)
 		}
+	})
+}
+
+func TestRefreshTrayMenuBeforeSetup(t *testing.T) {
+	Scenario(t, "GIVEN setupTray가 아직 실행되지 않음(trayReady=false) WHEN refreshTrayMenu 호출 THEN panic 없이 조용히 아무것도 안 한다 (회귀 테스트 — autoMountAll 레이스 대응)", func(t *testing.T) {
+		fynetest.NewApp()
+		win := fynetest.NewApp().NewWindow("test")
+		rm := &rcloneManager{win: win, cfg: engine.Config{}}
+		// trayReady는 기본값(false)으로 둔다 — setupTray를 아직 안 부른 상태를 재현.
+		rm.refreshTrayMenu() // panic이 나면 안 됨
+	})
+
+	Scenario(t, "GIVEN setupTray가 이미 실행됨(trayReady=true) WHEN refreshTrayMenu 호출 THEN panic 없이 정상적으로 진행된다", func(t *testing.T) {
+		fynetest.NewApp()
+		win := fynetest.NewApp().NewWindow("test")
+		rm := &rcloneManager{win: win, cfg: engine.Config{}, trayReady: true}
+		rm.refreshTrayMenu() // panic이 나면 안 됨
 	})
 }
