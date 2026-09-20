@@ -83,7 +83,6 @@ func main() {
 	win.Resize(fyne.NewSize(savedOr(cfg.WindowWidth, defaultWindowWidth), savedOr(cfg.WindowHeight, defaultWindowHeight)))
 
 	rm.build()
-	rm.setupTray(fyneApp)
 	rm.refreshVersionLabel()
 	rm.startNetworkMonitor()
 	rm.startScheduleMonitor()
@@ -98,7 +97,22 @@ func main() {
 		})
 	})
 
+	// setupTray, and the two update checks below, all need the event loop
+	// actually running before they're safe to call. setupTray in
+	// particular: SetSystemTrayIcon/Menu/Window ultimately talks to
+	// Windows' shell (explorer.exe) to register the tray icon, and at
+	// very-early auto-start (this app launching via the Windows startup
+	// registry key) the shell isn't always ready yet. Calling it
+	// synchronously in main(), before fyneApp.Run() starts pumping
+	// messages, meant that if the shell wasn't ready, this call could
+	// block indefinitely — and since Run() never even got called, the
+	// window's message loop never started at all. That's a confirmed,
+	// real bug: Windows Event Viewer showed recurring "Application Hang"
+	// events for RcloneManager.exe with HangType "Top level window is
+	// idle", exactly matching a window that exists but whose message
+	// loop never began.
 	fyneApp.Lifecycle().SetOnStarted(func() {
+		rm.setupTray(fyneApp)
 		rm.checkForUpdate(false)
 		rm.checkRcloneUpdate(false)
 	})
