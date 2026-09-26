@@ -70,7 +70,6 @@ func (rm *rcloneManager) mountWithOrigin(m engine.Mount, auto bool) {
 	}
 
 	rm.logf("INFO", "[마운트] %s:%s → %s 시작 (pid %d)", m.Remote, m.RemotePath, m.Drive, cmd.Process.Pid)
-	rm.clearStaleMountRetries(m.ID)
 	fyne.Do(func() { rm.table.Refresh(); rm.refreshTrayMenu() })
 
 	go rm.waitForMountExit(m, cmd, done, &stderrBuf)
@@ -129,6 +128,11 @@ func (rm *rcloneManager) waitForMountExit(m engine.Mount, cmd *exec.Cmd, done ch
 		} else {
 			rm.logf("ERROR", "[마운트] %s:%s 마운트포인트 정리 재시도 %d회 모두 실패", m.Remote, m.RemotePath, maxStaleMountRetries)
 		}
+	} else {
+		// 이번 종료는 stale 마운트포인트 문제가 아니었다(정상 종료든 다른
+		// 이유의 실패든) — 다음에 이 마운트가 진짜로 stale 문제를 겪으면
+		// 처음(1/3)부터 다시 셀 수 있도록 카운터를 리셋한다.
+		rm.clearStaleMountRetries(m.ID)
 	}
 
 	fyne.Do(func() {

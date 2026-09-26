@@ -19,3 +19,8 @@ var ErrGracefulStopUnsupported = errors.New("graceful stop signal not supported 
 func SignalGracefulStop(pid int) error {
 	return ErrGracefulStopUnsupported
 }
+
+// KillOrphanedRclone is a no-op off Windows — the real implementation
+// (process_windows.go) force-kills any leftover rclone.exe from a
+// previous session before this one starts mounting.
+func KillOrphanedRclone() error { return nil }

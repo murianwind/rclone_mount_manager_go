@@ -76,3 +76,29 @@ func SignalGracefulStop(pid int) error {
 
 	return windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(pid))
 }
+
+// KillOrphanedRclone force-kills every currently running rclone.exe
+// process. Meant to be called once at app startup, before the first
+// auto-mount attempt: if a previous session vanished (crashed, got
+// killed by Windows, etc.) without cleanly unmounting, its rclone.exe can
+// keep running on its own — Windows doesn't tie a child process's
+// lifetime to its parent's — and permanently blocks this session from
+// remounting the same drive letter no matter how many times we retry
+// waiting for it to go away on its own (see staleretry.go, which only
+// helps with genuinely transient WinFsp cleanup timing, not an actually
+// still-running conflicting process).
+//
+// Exit code 128 means taskkill found nothing to kill — the common,
+// expected case on a normal startup — and is not treated as an error.
+func KillOrphanedRclone() error {
+	cmd := exec.Command("taskkill", "/F", "/IM", "rclone.exe", "/T")
+	ConfigureBackgroundProcess(cmd)
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
+		return nil
+	}
+	return err
+}
