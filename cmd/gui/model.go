@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -25,9 +24,10 @@ import (
 type runningMount struct {
 	cmd           *exec.Cmd
 	done          chan struct{}
-	stderr        *bytes.Buffer
+	stderr        *cappedBuffer
 	stoppedByUs   bool
-	autoTriggered bool // started by autoMountAll(), not a direct user action
+	autoTriggered bool      // started by autoMountAll(), not a direct user action
+	startedAt     time.Time // lets the exit handler tell a quick failure from a long healthy run
 }
 
 // rcloneManager is the single owner of all app state — config, running
@@ -109,6 +109,13 @@ type rcloneManager struct {
 	// scheduleSkipMu guards scheduleSkip — see schedule.go.
 	scheduleSkipMu sync.Mutex
 	scheduleSkip   map[string]bool
+
+	// backoff throttles automatic (re)mount attempts for mounts that keep
+	// failing — see automountbackoff.go.
+	backoff backoffTracker
+
+	// dialogGate keeps the same alert from stacking up — see dialoggate.go.
+	dialogGate keyedGate
 }
 
 func (rm *rcloneManager) isUpdatingRclone() bool { return rm.updatingRclone.Load() }
@@ -145,6 +152,7 @@ func newRcloneManager(appDir string, log engine.RotatingLog, win fyne.Window) *r
 		active:       map[string]*runningMount{},
 		staleRetries: map[string]int{},
 		scheduleSkip: map[string]bool{},
+		dialogGate:   keyedGate{maxHold: dialogGateMaxHold},
 		selectedRow:  -1,
 	}
 }

@@ -20,7 +20,7 @@ const updateAssetName = "RcloneManager.zip"
 // silent startup check), nothing is shown unless an update is found —
 // mirrors the Python version's quiet periodic check.
 func (rm *rcloneManager) checkForUpdate(manual bool) {
-	go func() {
+	go rm.guard("app-update-check", func() {
 		rm.logf("INFO", "[업데이트] 확인 시작 (현재 v%s)", appVersion)
 		rel, err := engine.FetchLatestRelease(nil, engine.AppReleaseAPI)
 		if err != nil {
@@ -61,7 +61,7 @@ func (rm *rcloneManager) checkForUpdate(manual bool) {
 				rm.performUpdate(assetURL)
 			})
 		})
-	}()
+	})
 }
 
 // showUpdateConfirmDialog shows the release notes in a scrollable area
@@ -125,7 +125,7 @@ func (rm *rcloneManager) performUpdate(assetURL string) {
 		widget.NewLabel("새 버전을 다운로드하고 있습니다..."), rm.win)
 	progress.Show()
 
-	go func() {
+	go rm.guard("app-update", func() {
 		newExe, err := engine.DownloadAppUpdate(nil, rm.appDir, assetURL)
 		if err != nil {
 			rm.logf("ERROR", "[업데이트] 다운로드/추출 실패: %v", err)
@@ -162,5 +162,5 @@ func (rm *rcloneManager) performUpdate(assetURL string) {
 			progress.Hide()
 			fyne.CurrentApp().Quit() // the new version is already launching
 		})
-	}()
+	})
 }

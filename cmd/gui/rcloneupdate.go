@@ -20,7 +20,7 @@ import (
 // (a routine background check) stays quiet unless there's something to
 // offer — same split as checkForUpdate for the app itself.
 func (rm *rcloneManager) checkRcloneUpdate(manual bool) {
-	go func() {
+	go rm.guard("rclone-update-check", func() {
 		latest, err := engine.FetchLatestReleaseTag(nil, engine.RcloneReleaseAPI)
 		if err != nil {
 			rm.logf("ERROR", "[버전] rclone 릴리스 조회 실패: %v", err)
@@ -79,7 +79,7 @@ func (rm *rcloneManager) checkRcloneUpdate(manual bool) {
 				}
 			}, rm.win)
 		})
-	}()
+	})
 }
 
 // localRcloneVersionRaw runs `rclone version` and returns the raw parsed
@@ -127,7 +127,7 @@ func (rm *rcloneManager) installOrUpdateRclone(version string, remountAfter []en
 		destDir = filepath.Dir(p)
 	}
 
-	go func() {
+	go rm.guard("rclone-install", func() {
 		rm.updatingRclone.Store(true)
 		defer rm.updatingRclone.Store(false)
 
@@ -193,5 +193,5 @@ func (rm *rcloneManager) installOrUpdateRclone(version string, remountAfter []en
 					rm.win)
 			})
 		}
-	}()
+	})
 }

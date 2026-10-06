@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -22,28 +21,31 @@ func (rm *rcloneManager) mount(m engine.Mount) {
 	rm.mountWithOrigin(m, false)
 }
 
+// rcloneMissingKey identifies "rclone.exe could not be found" — one
+// app-wide condition rather than a per-mount one, so it shares a single
+// backoff entry and a single alert.
+const rcloneMissingKey = "rclone-missing"
+
 // mountWithOrigin is mount()'s real implementation. auto marks the attempt
 // as machine-triggered (autoMountAll(), not a direct user action) — this is
-// what lets waitForMountExit apply the offline-grace suppression instead of
-// always reporting a failure dialog. See networkmonitor.go for the auto side.
+// what lets waitForMountExit apply the offline-grace suppression and the
+// auto-mount backoff instead of treating every failure like a button click.
+// See networkmonitor.go for the auto side.
 func (rm *rcloneManager) mountWithOrigin(m engine.Mount, auto bool) {
 	exe, ok := rm.rcloneExePath()
 	if !ok {
-		rm.logf("ERROR", "[마운트] %s:%s 실패 — rclone.exe를 찾을 수 없음", m.Remote, m.RemotePath)
-		fyne.Do(func() {
-			rm.revealWindow()
-			dialog.ShowInformation("알림", "rclone.exe를 찾을 수 없습니다. 먼저 rclone 경로를 등록해 주세요.", rm.win)
-		})
+		rm.reportRcloneMissing(m, auto)
 		return
 	}
+	rm.backoff.reset(rcloneMissingKey)
 
 	args := engine.BuildCmd(exe, m)
 	cmd := exec.Command(args[0], args[1:]...)
 	engine.ConfigureBackgroundProcess(cmd) // hide console window, own process group/console
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
+	stderrBuf := newCappedBuffer(maxRcloneStderrBytes)
+	cmd.Stderr = stderrBuf
 	done := make(chan struct{})
-	running := &runningMount{cmd: cmd, done: done, stderr: &stderrBuf, autoTriggered: auto}
+	running := &runningMount{cmd: cmd, done: done, stderr: stderrBuf, autoTriggered: auto, startedAt: time.Now()}
 
 	// Reserve the mount before Start(). This closes the race between
 	// startup auto-mount, network-monitor transitions, and manual mounting.
@@ -62,69 +64,146 @@ func (rm *rcloneManager) mountWithOrigin(m engine.Mount, auto bool) {
 		}
 		rm.activeMu.Unlock()
 		rm.logf("ERROR", "[마운트] %s:%s 프로세스 시작 실패: %v", m.Remote, m.RemotePath, err)
-		fyne.Do(func() {
-			rm.revealWindow()
-			dialog.ShowError(err, rm.win)
-		})
+		if auto {
+			rm.backoff.recordExit(m.ID, true, 0, time.Now())
+		}
+		fyne.Do(func() { rm.showGatedError("start:"+m.ID, err) })
 		return
 	}
 
 	rm.logf("INFO", "[마운트] %s:%s → %s 시작 (pid %d)", m.Remote, m.RemotePath, m.Drive, cmd.Process.Pid)
 	fyne.Do(func() { rm.table.Refresh(); rm.refreshTrayMenu() })
 
-	go rm.waitForMountExit(m, cmd, done, &stderrBuf)
+	go rm.guard("mount-exit", func() { rm.waitForMountExit(m, cmd, done, stderrBuf) })
+}
+
+// reportRcloneMissing logs and alerts that rclone.exe can't be found.
+// Automatic attempts back off and the alert is shown once at a time —
+// otherwise the 10-second auto-mount poll would log and pop up the same
+// message forever.
+func (rm *rcloneManager) reportRcloneMissing(m engine.Mount, auto bool) {
+	if auto {
+		now := time.Now()
+		if rm.backoff.shouldSkip(rcloneMissingKey, now) {
+			return
+		}
+		rm.backoff.recordExit(rcloneMissingKey, true, 0, now)
+	}
+	rm.logf("ERROR", "[마운트] %s:%s 실패 — rclone.exe를 찾을 수 없음", m.Remote, m.RemotePath)
+	fyne.Do(func() {
+		rm.showGatedInfo(rcloneMissingKey, "알림", "rclone.exe를 찾을 수 없습니다. 먼저 rclone 경로를 등록해 주세요.")
+	})
+}
+
+// exitKind classifies how an rclone process ended.
+type exitKind int
+
+const (
+	exitClean     exitKind = iota // exited without error
+	exitRequested                 // non-zero exit, but we asked it to stop
+	exitFailed                    // any other failure
+)
+
+// mountExit is everything waitForMountExit learns about one process exit.
+type mountExit struct {
+	err           error
+	stoppedByUs   bool
+	autoTriggered bool
+	ranFor        time.Duration
+	detail        string // rclone's captured stderr, trimmed
+}
+
+// classifyMountExit tells a genuine failure apart from a normal,
+// user-requested unmount (both make the process exit, often with a
+// non-zero code). Pure, for testing — see mountexit_test.go.
+func classifyMountExit(err error, stoppedByUs bool) exitKind {
+	switch {
+	case err == nil:
+		return exitClean
+	case stoppedByUs:
+		return exitRequested
+	default:
+		return exitFailed
+	}
 }
 
 // waitForMountExit owns the one legal cmd.Wait() call for this process. It
-// tells a genuine mount failure apart from a normal, user-requested
-// unmount (both make the process exit, often with a non-zero code) via
-// runningMount.stoppedByUs, and only surfaces a failure dialog for the
-// former. An auto-triggered failure (autoMountAll(), not a button click)
-// during a short, known network outage is also kept silent — see
-// shouldSuppressAutoMountFailure — since it's expected to succeed on its
-// own once the network monitor retries.
-func (rm *rcloneManager) waitForMountExit(m engine.Mount, cmd *exec.Cmd, done chan struct{}, stderrBuf *bytes.Buffer) {
+// only surfaces a failure dialog for a genuine failure (see
+// classifyMountExit). An auto-triggered failure during a short, known
+// network outage is also kept silent — see shouldSuppressAutoMountFailure
+// — since it's expected to succeed on its own once the network monitor
+// retries. Each step is its own function so the decisions stay testable.
+func (rm *rcloneManager) waitForMountExit(m engine.Mount, cmd *exec.Cmd, done chan struct{}, stderrBuf *cappedBuffer) {
 	err := cmd.Wait()
 	close(done)
 
-	rm.activeMu.Lock()
-	running := rm.active[m.ID]
-	stoppedByUs := running != nil && running.stoppedByUs
-	autoTriggered := running != nil && running.autoTriggered
-	delete(rm.active, m.ID)
-	rm.activeMu.Unlock()
+	ex := rm.collectMountExit(m.ID, err, stderrBuf)
+	kind := classifyMountExit(ex.err, ex.stoppedByUs)
+	rm.logMountExit(m, kind, ex)
+	report := rm.resolveFailureReport(m, kind, ex)
 
-	detail := strings.TrimSpace(stderrBuf.String())
-	switch {
-	case err != nil && stoppedByUs:
+	fyne.Do(func() {
+		rm.table.Refresh()
+		rm.refreshTrayMenu()
+		if report {
+			rm.showMountFailureDialog(m, ex.detail)
+		}
+	})
+}
+
+// collectMountExit gathers the exit's context and removes the mount from
+// the active set — in one critical section, so no other goroutine can see
+// a half-finished state.
+func (rm *rcloneManager) collectMountExit(id string, err error, stderrBuf *cappedBuffer) mountExit {
+	ex := mountExit{err: err}
+	rm.activeMu.Lock()
+	if running := rm.active[id]; running != nil {
+		ex.stoppedByUs = running.stoppedByUs
+		ex.autoTriggered = running.autoTriggered
+		ex.ranFor = time.Since(running.startedAt)
+	}
+	delete(rm.active, id)
+	rm.activeMu.Unlock()
+	ex.detail = strings.TrimSpace(stderrBuf.String())
+	return ex
+}
+
+func (rm *rcloneManager) logMountExit(m engine.Mount, kind exitKind, ex mountExit) {
+	switch kind {
+	case exitRequested:
 		// 우리가 직접 중지시킨(정상 종료 신호 또는 타임아웃 후 강제 종료)
 		// 프로세스는 0이 아닌 코드로 끝나는 경우가 흔하다 — 예상된 결과라
 		// WARN이 아니라 INFO로 남긴다. (강제 종료 시 Windows가 자주 보고하는
 		// exit status 0x40010004(DBG_TERMINATE_PROCESS)가 대표적인 예:
 		// 실제로는 우리가 요청한 종료가 성공한 것뿐인데, 이걸 WARN으로 찍으면
 		// 로그를 볼 때마다 진짜 문제와 구분이 안 된다.)
-		rm.logf("INFO", "[마운트] %s:%s 프로세스 종료 (요청에 의한 종료, 코드: %v)", m.Remote, m.RemotePath, err)
-	case err != nil:
-		rm.logf("WARN", "[마운트] %s:%s 프로세스 종료 (오류 종료: %v)", m.Remote, m.RemotePath, err)
-		if detail != "" {
-			rm.logf("ERROR", "[마운트] %s:%s 오류 상세: %s", m.Remote, m.RemotePath, detail)
+		rm.logf("INFO", "[마운트] %s:%s 프로세스 종료 (요청에 의한 종료, 코드: %v)", m.Remote, m.RemotePath, ex.err)
+	case exitFailed:
+		rm.logf("WARN", "[마운트] %s:%s 프로세스 종료 (오류 종료: %v)", m.Remote, m.RemotePath, ex.err)
+		if ex.detail != "" {
+			rm.logf("ERROR", "[마운트] %s:%s 오류 상세: %s", m.Remote, m.RemotePath, ex.detail)
 		}
 	default:
 		rm.logf("INFO", "[마운트] %s:%s 프로세스 종료", m.Remote, m.RemotePath)
 	}
+}
 
-	report := shouldReportMountFailure(err, stoppedByUs)
-	if report && autoTriggered && shouldSuppressAutoMountFailure(rm.getOfflineSince(), time.Now(), autoMountFailureGrace) {
+// resolveFailureReport decides whether this exit should interrupt the
+// user, schedules the stale-mountpoint retry when that's the cause, and
+// records the outcome for the auto-mount backoff.
+func (rm *rcloneManager) resolveFailureReport(m engine.Mount, kind exitKind, ex mountExit) bool {
+	report := shouldReportMountFailure(ex.err, ex.stoppedByUs)
+	if report && ex.autoTriggered && shouldSuppressAutoMountFailure(rm.getOfflineSince(), time.Now(), autoMountFailureGrace) {
 		rm.logf("INFO", "[마운트] %s:%s 자동 마운트 실패했지만 오프라인 유예 기간(%v) 이내라 알림 생략", m.Remote, m.RemotePath, autoMountFailureGrace)
 		report = false
 	}
-	if report && isStaleMountpointError(detail) {
+	if report && isStaleMountpointError(ex.detail) {
 		used, allowed := rm.noteStaleMountRetry(m.ID)
 		if allowed {
 			rm.logf("WARN", "[마운트] %s:%s 마운트포인트가 아직 정리되지 않은 것으로 보임 — %v 후 재시도 (%d/%d)",
 				m.Remote, m.RemotePath, staleMountRetryDelay, used, maxStaleMountRetries)
 			report = false
-			go rm.retryStaleMount(m, autoTriggered)
+			go rm.guard("stale-retry", func() { rm.retryStaleMount(m, ex.autoTriggered) })
 		} else {
 			rm.logf("ERROR", "[마운트] %s:%s 마운트포인트 정리 재시도 %d회 모두 실패", m.Remote, m.RemotePath, maxStaleMountRetries)
 		}
@@ -134,28 +213,40 @@ func (rm *rcloneManager) waitForMountExit(m engine.Mount, cmd *exec.Cmd, done ch
 		// 처음(1/3)부터 다시 셀 수 있도록 카운터를 리셋한다.
 		rm.clearStaleMountRetries(m.ID)
 	}
+	rm.recordAutoMountOutcome(m.ID, kind, ex)
+	return report
+}
 
-	fyne.Do(func() {
-		rm.table.Refresh()
-		rm.refreshTrayMenu()
-		if report {
-			rm.showMountFailureDialog(m, detail)
-		}
-	})
+// recordAutoMountOutcome feeds the auto-mount backoff. Only *automatic*
+// attempts that fail while we're online count toward it: a manual attempt
+// resets the mount's history (the user is driving), and a failure during
+// an outage is expected to resolve itself — counting it would make the
+// mount wait out a backoff it never deserved right after the network
+// returns.
+func (rm *rcloneManager) recordAutoMountOutcome(id string, kind exitKind, ex mountExit) {
+	if !ex.autoTriggered {
+		rm.backoff.reset(id)
+		return
+	}
+	failed := kind == exitFailed
+	if failed && !rm.getOfflineSince().IsZero() {
+		return
+	}
+	rm.backoff.recordExit(id, failed, ex.ranFor, time.Now())
 }
 
 // shouldReportMountFailure decides whether an rclone process exit is worth
 // interrupting the user for. Pulled out as a pure function for testing —
 // see mount_test.go.
 func shouldReportMountFailure(exitErr error, stoppedByUs bool) bool {
-	return exitErr != nil && !stoppedByUs
+	return classifyMountExit(exitErr, stoppedByUs) == exitFailed
 }
 
 // unmount asks a running mount to stop, without blocking the caller (safe
 // to call from a UI button handler). See stopMountAndWait for the actual
 // stop logic — this just fires it off in a goroutine.
 func (rm *rcloneManager) unmount(mountID string) {
-	go rm.stopMountAndWait(mountID)
+	go rm.guard("unmount", func() { rm.stopMountAndWait(mountID) })
 }
 
 // stopMountAndWait gracefully stops a running mount and does not return until
@@ -218,7 +309,7 @@ func (rm *rcloneManager) unmountAllAndWait() {
 		wg.Add(1)
 		go func(mountID string) {
 			defer wg.Done()
-			rm.stopMountAndWait(mountID)
+			rm.guard("unmount-all", func() { rm.stopMountAndWait(mountID) })
 		}(id)
 	}
 	wg.Wait()
@@ -237,10 +328,10 @@ func (rm *rcloneManager) quitGracefully() {
 		return
 	}
 	rm.logf("INFO", "[종료] 마운트 %d개 해제 후 종료", len(active))
-	go func() {
+	go rm.guard("quit", func() {
 		rm.unmountAllAndWait()
 		fyne.Do(func() { fyne.CurrentApp().Quit() })
-	}()
+	})
 }
 
 // testMountConnection runs `rclone lsf <remote>:<path> --max-depth 1` to
@@ -254,7 +345,7 @@ func (rm *rcloneManager) testMountConnection(remote, path string) {
 	}
 	target := remote + ":" + strings.Trim(path, "/")
 
-	go func() {
+	go rm.guard("connection-test", func() {
 		cmd := exec.Command(exe, "lsf", target, "--max-depth", "1")
 		engine.ConfigureBackgroundProcess(cmd)
 		out, err := cmd.CombinedOutput()
@@ -266,7 +357,7 @@ func (rm *rcloneManager) testMountConnection(remote, path string) {
 			rm.logf("ERROR", "[연결 테스트] %s 실패: %v", target, err)
 			dialog.ShowInformation("연결 실패", fmt.Sprintf("연결 불가:\n%s", strings.TrimSpace(string(out))), rm.win)
 		})
-	}()
+	})
 }
 
 // detectLocalRcloneVersion runs `rclone version` and formats the result

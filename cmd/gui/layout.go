@@ -156,8 +156,8 @@ func (rm *rcloneManager) refreshVersionLabel() {
 		rm.rcVersionText.SetText("rclone 다운로드 필요")
 		return
 	}
-	go func() {
+	go rm.guard("version-label", func() {
 		text := detectLocalRcloneVersion(exe)
 		fyne.Do(func() { rm.rcVersionText.SetText(text) })
-	}()
+	})
 }

@@ -211,13 +211,16 @@ func (rm *rcloneManager) confirmDeleteRemote(r engine.Remote) {
 // showMountFailureDialog shows rclone's own error output (its stderr) so
 // the user can see *why* a mount failed, instead of it just silently going
 // back to "해제됨". Also points at the log file for the full history.
+// Only one such dialog per mount is open at a time (see showGated), so a
+// mount that keeps failing can't stack up a new window on every retry.
 func (rm *rcloneManager) showMountFailureDialog(m engine.Mount, detail string) {
-	rm.revealWindow()
-	label := widget.NewLabel(mountFailureMessage(m, detail, rm.log.Path))
-	label.Wrapping = fyne.TextWrapWord
-	scroll := container.NewVScroll(label)
-	scroll.SetMinSize(fyne.NewSize(420, 220))
-	dialog.ShowCustom("마운트 오류", "확인", scroll, rm.win)
+	rm.showGated("mount-failure:"+m.ID, func() dialog.Dialog {
+		label := widget.NewLabel(mountFailureMessage(m, detail, rm.log.Path))
+		label.Wrapping = fyne.TextWrapWord
+		scroll := container.NewVScroll(label)
+		scroll.SetMinSize(fyne.NewSize(420, 220))
+		return dialog.NewCustom("마운트 오류", "확인", scroll, rm.win)
+	})
 }
 
 // mountFailureMessage builds the failure-dialog text. Pulled out as a pure

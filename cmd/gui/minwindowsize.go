@@ -28,14 +28,24 @@ const minWindowHeight = 520
 // matters.
 func enforceMinWindowSize(win fyne.Window) {
 	minW := float32(tableContentWidth + 20)
+	var inFlight keyedGate
 	go func() {
 		ticker := time.NewTicker(150 * time.Millisecond)
 		defer ticker.Stop()
 		for range ticker.C {
-			target, need := clampToMinWindowSize(win.Canvas().Size(), minW, minWindowHeight)
-			if need {
-				fyne.Do(func() { win.Resize(target) })
+			// 창 크기를 읽는 것도 UI 스레드에서 해야 안전하다. UI가 바빠서
+			// 이전 확인이 아직 안 끝났으면 새로 예약하지 않는다 — 안 그러면
+			// UI가 멈춘 동안 확인 작업이 큐에 계속 쌓인다.
+			if !inFlight.tryAcquire("size-check") {
+				continue
 			}
+			fyne.Do(func() {
+				defer inFlight.release("size-check")
+				target, need := clampToMinWindowSize(win.Canvas().Size(), minW, minWindowHeight)
+				if need {
+					win.Resize(target)
+				}
+			})
 		}
 	}()
 }

@@ -33,7 +33,7 @@ import (
 	"github.com/Murianwind/rclone-manager-go/internal/engine"
 )
 
-const appVersion = "1.0.9"
+const appVersion = "1.0.7"
 const issueURL = "https://github.com/Murianwind/rclone_mount_manager_go/issues/new"
 
 // 컬럼 합(약 686px) + 창 여백/스크롤바를 감안해 기본 창 너비에 여유를 둔다 —
@@ -87,7 +87,6 @@ func main() {
 	win.Resize(fyne.NewSize(savedOr(cfg.WindowWidth, defaultWindowWidth), savedOr(cfg.WindowHeight, defaultWindowHeight)))
 
 	rm.build()
-	rm.setupTray(fyneApp)
 	rm.refreshVersionLabel()
 	rm.startNetworkMonitor()
 	rm.startScheduleMonitor()
@@ -102,17 +101,30 @@ func main() {
 		})
 	})
 
+	// Everything below needs Fyne's event loop to actually be running, so it
+	// lives in the app-started hook (which runs on the main thread, before
+	// the loop's first turn):
+	//   - prepareNativeWindow: gives a tray-only (hidden) window its native
+	//     handle, so Fyne's system-theme handler can't hit a window without
+	//     one — see startupwindow.go. Must come first.
+	//   - setupTray: registering the tray icon talks to Windows' shell
+	//     (explorer.exe), which isn't always ready at very-early auto-start;
+	//     doing it before Run() could block main() so the message loop never
+	//     started (Windows logged "Application Hang: Top level window is
+	//     idle").
+	//   - the two update checks need the loop for their dialogs.
+	startMode := windowStartModeFor(rm.cfgSnapshot().StartMinimized)
 	fyneApp.Lifecycle().SetOnStarted(func() {
+		prepareNativeWindow(win, startMode)
+		rm.setupTray(fyneApp)
 		rm.checkForUpdate(false)
 		rm.checkRcloneUpdate(false)
 	})
 
-	if rm.cfgSnapshot().StartMinimized {
-		fyneApp.Run()
-	} else {
+	if startMode == startWindowShown {
 		win.Show()
-		fyneApp.Run()
 	}
+	fyneApp.Run()
 }
 
 func mustAppDir() string {

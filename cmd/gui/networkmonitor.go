@@ -56,10 +56,8 @@ func (rm *rcloneManager) autoMountAll() {
 	if rm.isUpdatingRclone() {
 		return
 	}
-	for _, m := range rm.cfgSnapshot().Mounts {
-		if m.AutoMount {
-			rm.mountWithOrigin(m, true)
-		}
+	for _, m := range mountsDueForAutoMount(rm.cfgSnapshot().Mounts, &rm.backoff, time.Now()) {
+		rm.mountWithOrigin(m, true)
 	}
 }
 
@@ -92,31 +90,44 @@ func (rm *rcloneManager) unmountAllOnDisconnect() {
 // It is called from the Fyne app-started lifecycle hook so all UI work is safe.
 func (rm *rcloneManager) startNetworkMonitor() {
 	go func() {
-		connected := engine.IsInternetAvailable("8.8.8.8", 53, 3*time.Second)
-		if connected {
-			rm.setOfflineSince(time.Time{})
-			rm.autoMountAll()
-		} else {
-			rm.setOfflineSince(time.Now())
-		}
+		var connected bool
+		rm.guard("network-monitor/init", func() {
+			connected = engine.IsInternetAvailable("8.8.8.8", 53, 3*time.Second)
+			if connected {
+				rm.setOfflineSince(time.Time{})
+				rm.autoMountAll()
+			} else {
+				rm.setOfflineSince(time.Now())
+			}
+		})
 		wasConnected := connected
 
 		for {
 			time.Sleep(10 * time.Second)
-			connected = engine.IsInternetAvailable("8.8.8.8", 53, 3*time.Second)
-
-			if connected {
-				if !wasConnected {
-					rm.setOfflineSince(time.Time{})
-				}
-				rm.autoMountAll()
-			} else {
-				if wasConnected {
-					rm.setOfflineSince(time.Now())
-					rm.unmountAllOnDisconnect()
-				}
-			}
+			rm.guard("network-monitor", func() {
+				connected = rm.networkTick(wasConnected)
+			})
 			wasConnected = connected
 		}
 	}()
+}
+
+// networkTick runs one poll of the network monitor and returns whether
+// we're connected now. Reconnecting clears every mount's auto-mount
+// backoff, so anything that was only failing because we were offline
+// retries immediately.
+func (rm *rcloneManager) networkTick(wasConnected bool) (connected bool) {
+	connected = engine.IsInternetAvailable("8.8.8.8", 53, 3*time.Second)
+	switch {
+	case connected:
+		if !wasConnected {
+			rm.setOfflineSince(time.Time{})
+			rm.backoff.resetAll()
+		}
+		rm.autoMountAll()
+	case wasConnected:
+		rm.setOfflineSince(time.Now())
+		rm.unmountAllOnDisconnect()
+	}
+	return connected
 }

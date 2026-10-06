@@ -12,10 +12,10 @@ import (
 // launches doesn't wait up to a minute for its first mount.
 func (rm *rcloneManager) startScheduleMonitor() {
 	go func() {
-		rm.tickSchedules()
+		rm.guard("schedule-monitor", rm.tickSchedules)
 		for {
 			time.Sleep(time.Minute)
-			rm.tickSchedules()
+			rm.guard("schedule-monitor", rm.tickSchedules)
 		}
 	}()
 }
@@ -31,7 +31,9 @@ func (rm *rcloneManager) tickSchedules() {
 
 		switch engine.DecideScheduleAction(m.Schedules, now, running, skip) {
 		case engine.ScheduleActionMount:
-			rm.mountWithOrigin(m, true)
+			if !rm.backoff.shouldSkip(m.ID, now) {
+				rm.mountWithOrigin(m, true)
+			}
 		case engine.ScheduleActionUnmount:
 			rm.unmount(m.ID)
 		case engine.ScheduleActionResetSkip:
