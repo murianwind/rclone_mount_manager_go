@@ -29,7 +29,6 @@ func (rm *rcloneManager) checkRcloneUpdate(manual bool) {
 			}
 			return
 		}
-		rm.latestRcloneVersion = latest
 
 		exe, ok := rm.rcloneExePath()
 		if !ok {

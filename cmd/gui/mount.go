@@ -45,7 +45,7 @@ func (rm *rcloneManager) mountWithOrigin(m engine.Mount, auto bool) {
 	stderrBuf := newCappedBuffer(maxRcloneStderrBytes)
 	cmd.Stderr = stderrBuf
 	done := make(chan struct{})
-	running := &runningMount{cmd: cmd, done: done, stderr: stderrBuf, autoTriggered: auto, startedAt: time.Now()}
+	running := &runningMount{cmd: cmd, done: done, autoTriggered: auto, startedAt: time.Now()}
 
 	// Reserve the mount before Start(). This closes the race between
 	// startup auto-mount, network-monitor transitions, and manual mounting.

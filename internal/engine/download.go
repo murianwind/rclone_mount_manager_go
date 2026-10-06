@@ -92,33 +92,6 @@ func extractFileFromZip(data []byte, nameSuffix string) ([]byte, error) {
 	return nil, fmt.Errorf("%s not found in downloaded archive", nameSuffix)
 }
 
-// DownloadAppRelease downloads an app-update release asset into destDir
-// under a fixed name, mirroring download_app_release(). A running exe
-// can't safely overwrite itself mid-download on Windows, so — like the
-// Python version — this always lands the file next to the running exe and
-// leaves the actual swap for later (Phase 3's automatic
-// quit->install->relaunch updater, or a manual replace by the user).
-func DownloadAppRelease(client *http.Client, destDir, assetURL string) (status string, err error) {
-	if client == nil {
-		client = defaultDownloadClient
-	}
-
-	suffix := ".zip"
-	if idx := strings.LastIndex(assetURL, "."); idx != -1 {
-		suffix = assetURL[idx:]
-	}
-	dest := filepath.Join(destDir, "RcloneManager_update"+suffix)
-
-	data, err := httpGetBytes(client, assetURL)
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
-		return "", err
-	}
-	return DownloadStatusManual, nil
-}
-
 func httpGetBytes(client *http.Client, url string) ([]byte, error) {
 	if client == nil {
 		client = defaultDownloadClient

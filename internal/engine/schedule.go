@@ -102,19 +102,6 @@ const (
 	ScheduleActionResetSkip
 )
 
-func (a ScheduleAction) String() string {
-	switch a {
-	case ScheduleActionMount:
-		return "mount"
-	case ScheduleActionUnmount:
-		return "unmount"
-	case ScheduleActionResetSkip:
-		return "resetSkip"
-	default:
-		return "none"
-	}
-}
-
 // DecideScheduleAction is the whole scheduler's decision rule, isolated
 // from any process/state management so it can be tested without actually
 // mounting anything:

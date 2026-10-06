@@ -219,3 +219,17 @@ func TestDecideScheduleAction(t *testing.T) {
 		}
 	})
 }
+
+// String은 테스트 실패 메시지(%v)를 읽기 쉽게 하려는 용도라 프로덕션 코드에는 두지 않는다.
+func (a ScheduleAction) String() string {
+	switch a {
+	case ScheduleActionMount:
+		return "mount"
+	case ScheduleActionUnmount:
+		return "unmount"
+	case ScheduleActionResetSkip:
+		return "resetSkip"
+	default:
+		return "none"
+	}
+}

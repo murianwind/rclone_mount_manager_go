@@ -113,27 +113,3 @@ func TestDownloadRclone(t *testing.T) {
 		}
 	})
 }
-
-func TestDownloadAppRelease(t *testing.T) {
-	Scenario(t, "GIVEN 앱 업데이트 자산 URL WHEN 다운로드 THEN 고정된 이름(RcloneManager_update.*)으로 저장된다", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("fake update package"))
-		}))
-		defer srv.Close()
-
-		destDir := t.TempDir()
-		status, err := DownloadAppRelease(srv.Client(), destDir, srv.URL+"/RcloneManager-2.0.0.zip")
-		thenNoError(t, err)
-		if status != DownloadStatusManual {
-			t.Errorf("상태 = %q, 기대값 %q", status, DownloadStatusManual)
-		}
-
-		data, err := os.ReadFile(filepath.Join(destDir, "RcloneManager_update.zip"))
-		if err != nil {
-			t.Fatalf("업데이트 파일이 기록됐어야 함: %v", err)
-		}
-		if string(data) != "fake update package" {
-			t.Errorf("예상치 못한 내용: %q", data)
-		}
-	})
-}

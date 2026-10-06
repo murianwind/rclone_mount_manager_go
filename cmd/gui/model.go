@@ -17,14 +17,14 @@ import (
 // runningMount tracks a live rclone mount process. done is closed by the
 // single goroutine that owns cmd.Wait() — unmount() waits on it (with a
 // timeout) instead of calling Wait() itself, since exec.Cmd.Wait() may
-// only be called once. stderr captures rclone's error output so a failed
-// mount can show *why* it failed instead of just going quietly back to
-// "해제됨". stoppedByUs distinguishes a failure from a normal unmount
-// (both make the process exit, often with a non-zero code).
+// only be called once. stoppedByUs distinguishes a failure from a normal
+// unmount (both make the process exit, often with a non-zero code).
+// rclone's stderr is captured by a cappedBuffer that goes straight to
+// waitForMountExit, so a failed mount can show *why* it failed instead of
+// just going quietly back to "해제됨".
 type runningMount struct {
 	cmd           *exec.Cmd
 	done          chan struct{}
-	stderr        *cappedBuffer
 	stoppedByUs   bool
 	autoTriggered bool      // started by autoMountAll(), not a direct user action
 	startedAt     time.Time // lets the exit handler tell a quick failure from a long healthy run
@@ -61,8 +61,6 @@ type rcloneManager struct {
 	rcVersionText *widget.Button // clickable — tapping checks for a newer rclone
 
 	selectedRow int // -1 = nothing selected; used by the 위/아래 이동 buttons
-
-	latestRcloneVersion string // cached from the last successful check; "" = unknown
 
 	activeMu sync.Mutex
 	active   map[string]*runningMount
