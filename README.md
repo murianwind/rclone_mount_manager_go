@@ -63,7 +63,7 @@ Windows용 rclone 마운트 관리 트레이 앱입니다. rclone 리모트를 �
 - 프로그램 폴더의 `RcloneManager.log` 파일에 마운트/업데이트 관련 기록이 남습니다. 문제가 재현되면 이 파일을 확인해 주세요.
 - 프로그램이 예기치 않게 종료된 적이 있다면 `RcloneManager.crash.log`(타임스탬프가 붙은 이름으로 보관됩니다) 파일도 함께 남아있을 수 있습니다 — 문의 시 두 로그 파일을 같이 첨부해 주시면 원인 파악에 큰 도움이 됩니다.
 - 마운트가 실패하면 rclone이 출력한 오류 메시지를 그대로 보여주는 창이 뜹니다.
-- 버그 제보나 문의는 창 상단의 **!** 버튼(또는 [Issues](https://github.com/Murianwind/rclone_mount_manager_go/issues/new)) 페이지를 이용해 주세요.
+- 결함 등록이나 제품 문의는 창 상단의 **!** 버튼(또는 [Issues](https://github.com/Murianwind/rclone_mount_manager_go/issues/new)) 페이지를 이용해 주세요.
 
 ## 요구 사항
 
